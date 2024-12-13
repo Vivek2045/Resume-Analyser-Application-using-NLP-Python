@@ -1,0 +1,222 @@
+#Import Libaries
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+#Load Dataset
+df = pd.read_csv('UpdatedResumeDataSet.csv')
+df.head()
+
+df.shape
+
+#Exploring Categories
+df['Category'].value_counts()
+
+
+#Visualization
+plt.figure(figsize=(15,5))
+sns.countplot(df['Category'])
+plt.xticks(rotation=90)
+plt.show()
+
+df['Category'].unique()
+
+
+counts = df['Category'].value_counts()
+labels = df['Category'].unique()
+plt.figure(figsize=(15,10))
+
+plt.pie(counts,labels=labels,autopct='%1.1f%%',shadow=True, colors=plt.cm.plasma(np.linspace(0,1,3)))
+plt.show()
+
+
+#Exploring Resume
+df['Category'][0]
+
+df['Resume'][0]
+
+#Balance Classes (Categories)
+# Check the original category distribution
+print("Original Category Distribution:")
+print(df['Category'].value_counts())
+
+# Get the largest category size (i.e., the category with the maximum number of entries)
+max_size = df['Category'].value_counts().max()
+
+# Perform oversampling
+balanced_df = df.groupby('Category').apply(lambda x: x.sample(max_size, replace=True)).reset_index(drop=True)
+
+# Shuffle the dataset to avoid any order bias
+df = balanced_df.sample(frac=1).reset_index(drop=True)
+
+# Check the balanced category distribution
+print("\nBalanced Category Distribution (After Oversampling):")
+print(df['Category'].value_counts())
+
+
+#Cleaning Data:
+
+import re
+def cleanResume(txt):
+    cleanText = re.sub('http\S+\s', ' ', txt)
+    cleanText = re.sub('RT|cc', ' ', cleanText)
+    cleanText = re.sub('#\S+\s', ' ', cleanText)
+    cleanText = re.sub('@\S+', '  ', cleanText)  
+    cleanText = re.sub('[%s]' % re.escape("""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""), ' ', cleanText)
+    cleanText = re.sub(r'[^\x00-\x7f]', ' ', cleanText) 
+    cleanText = re.sub('\s+', ' ', cleanText)
+    return cleanText
+
+cleanResume("my #### $ #  #noorsaeed webiste like is this http://heloword and access it @gmain.com")
+
+df['Resume'] = df['Resume'].apply(lambda x: cleanResume(x))
+df['Resume'][0]
+
+df['Resume'] = df['Resume'].apply(lambda x: cleanResume(x))
+df['Resume'][0]
+
+#words into categorical values
+
+le = LabelEncoder()
+le.fit(df['Category'])
+df['Category'] = le.transform(df['Category'])
+df.Category.unique()
+
+#Vactorization
+
+tfidf = TfidfVectorizer(stop_words='english')
+
+tfidf.fit(df['Resume'])
+requredTaxt  = tfidf.transform(df['Resume'])
+
+X_train, X_test, y_train, y_test = train_test_split(requredTaxt, df['Category'], test_size=0.2, random_state=42)
+X_train.shape
+
+X_test.shape
+
+
+# Ensure that X_train and X_test are dense if they are sparse
+X_train = X_train.toarray() if hasattr(X_train, 'toarray') else X_train
+X_test = X_test.toarray() if hasattr(X_test, 'toarray') else X_test
+
+# 1. Train KNeighborsClassifier
+knn_model = OneVsRestClassifier(KNeighborsClassifier())
+knn_model.fit(X_train, y_train)
+y_pred_knn = knn_model.predict(X_test)
+print("\nKNeighborsClassifier Results:")
+print(f"Accuracy: {accuracy_score(y_test, y_pred_knn):.4f}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_test, y_pred_knn)}")
+print(f"Classification Report:\n{classification_report(y_test, y_pred_knn)}")
+
+
+# 2. Train SVC
+svc_model = OneVsRestClassifier(SVC())
+svc_model.fit(X_train, y_train)
+y_pred_svc = svc_model.predict(X_test)
+print("\nSVC Results:")
+print(f"Accuracy: {accuracy_score(y_test, y_pred_svc):.4f}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_test, y_pred_svc)}")
+print(f"Classification Report:\n{classification_report(y_test, y_pred_svc)}")
+
+# 3. Train RandomForestClassifier
+rf_model = OneVsRestClassifier(RandomForestClassifier())
+rf_model.fit(X_train, y_train)
+y_pred_rf = rf_model.predict(X_test)
+print("\nRandomForestClassifier Results:")
+print(f"Accuracy: {accuracy_score(y_test, y_pred_rf):.4f}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_test, y_pred_rf)}")
+print(f"Classification Report:\n{classification_report(y_test, y_pred_rf)}")
+
+#Save Files
+import pickle
+pickle.dump(tfidf,open('tfidf.pkl','wb'))
+pickle.dump(svc_model, open('clf.pkl', 'wb'))
+pickle.dump(le, open("encoder.pkl",'wb'))
+
+#Prediction System
+# Function to predict the category of a resume
+def pred(input_resume):
+    # Preprocess the input text (e.g., cleaning, etc.)
+    cleaned_text = cleanResume(input_resume) 
+
+    # Vectorize the cleaned text using the same TF-IDF vectorizer used during training
+    vectorized_text = tfidf.transform([cleaned_text])
+    
+    # Convert sparse matrix to dense
+    vectorized_text = vectorized_text.toarray()
+
+    # Prediction
+    predicted_category = svc_model.predict(vectorized_text)
+
+    # get name of predicted category
+    predicted_category_name = le.inverse_transform(predicted_category)
+
+    return predicted_category_name[0]  # Return the category name
+
+myresume = """I am a data scientist specializing in machine
+learning, deep learning, and computer vision. With
+a strong background in mathematics, statistics,
+and programming, I am passionate about
+uncovering hidden patterns and insights in data.
+I have extensive experience in developing
+predictive models, implementing deep learning
+algorithms, and designing computer vision
+systems. My technical skills include proficiency in
+Python, Sklearn, TensorFlow, and PyTorch.
+What sets me apart is my ability to effectively
+communicate complex concepts to diverse
+audiences. I excel in translating technical insights
+into actionable recommendations that drive
+informed decision-making.
+If you're looking for a dedicated and versatile data
+scientist to collaborate on impactful projects, I am
+eager to contribute my expertise. Let's harness the
+power of data together to unlock new possibilities
+and shape a better future.
+Contact & Sources
+Email: 611noorsaeed@gmail.com
+Phone: 03442826192
+Github: https://github.com/611noorsaeed
+Linkdin: https://www.linkedin.com/in/noor-saeed654a23263/
+Blogs: https://medium.com/@611noorsaeed
+Youtube: Artificial Intelligence
+ABOUT ME
+WORK EXPERIENCE
+SKILLES
+NOOR SAEED
+LANGUAGES
+English
+Urdu
+Hindi
+I am a versatile data scientist with expertise in a wide
+range of projects, including machine learning,
+recommendation systems, deep learning, and computer
+vision. Throughout my career, I have successfully
+developed and deployed various machine learning models
+to solve complex problems and drive data-driven
+decision-making
+Machine Learnine
+Deep Learning
+Computer Vision
+Recommendation Systems
+Data Visualization
+Programming Languages (Python, SQL)
+Data Preprocessing and Feature Engineering
+Model Evaluation and Deployment
+Statistical Analysis
+Communication and Collaboration
+"""
+
+pred(myresume)
+
